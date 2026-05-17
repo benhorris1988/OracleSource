@@ -4,9 +4,9 @@ import '../models/oracle_type.dart';
 import 'lookups.dart';
 import 'synth.dart';
 
-/// A default Oracle-style source mirroring the classic HR + SALES sample
-/// schemas plus a `SAP_MIRROR` schema that ports the SAP entities and
-/// data-quality rule bank used by the ConnectorExpenses reference console.
+/// A default Oracle-style source seeded with the classic HR + SALES sample
+/// schemas, populated with deterministic synthetic rows and a small bank of
+/// data-quality rules so the validator has something to chew on immediately.
 OracleSource buildDefaultSource() {
   final source = OracleSource(
     name: 'ORACLE_DEV',
@@ -17,7 +17,7 @@ OracleSource buildDefaultSource() {
 
   _seedHr(source);
   _seedSales(source);
-  _seedSapMirror(source);
+  _seedRules(source);
 
   for (final t in source.tables) {
     synthesizeRows(t);
@@ -124,294 +124,163 @@ void _seedSales(OracleSource source) {
 }
 
 // ---------------------------------------------------------------------------
-// SAP_MIRROR — port of the ConnectorExpenses entities + DQ rule bank
+// Oracle-native data-quality rules
 // ---------------------------------------------------------------------------
 
-void _seedSapMirror(OracleSource source) {
-  final sap = OracleSchema(
-    name: 'SAP_MIRROR',
-    description:
-        'Oracle mirror of canonical SAP entities (customer, material, '
-        'sales_order, pricing_condition, ...) with their data-quality rules.',
-  );
-  source.schemas.add(sap);
+void _seedRules(OracleSource source) {
+  final departments = source.tables.firstWhere((t) => t.name == 'DEPARTMENTS');
+  final jobs = source.tables.firstWhere((t) => t.name == 'JOBS');
+  final employees = source.tables.firstWhere((t) => t.name == 'EMPLOYEES');
+  final customers = source.tables.firstWhere((t) => t.name == 'CUSTOMERS');
+  final orders = source.tables.firstWhere((t) => t.name == 'ORDERS');
 
-  final customer = OracleTable(
-    name: 'CUSTOMER',
-    schemaId: sap.id,
-    rowCountTarget: 60,
-    synthSeed: 3001,
-    columns: [
-      OracleColumn(name: 'KUNNR', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'NAME1', type: OracleType.varchar2, length: 40, nullable: false, synthHint: 'full_name'),
-      OracleColumn(name: 'LAND1', type: OracleType.char, length: 2, synthHint: 'country'),
-      OracleColumn(name: 'KTOKD', type: OracleType.char, length: 4),
-      OracleColumn(name: 'STCEG', type: OracleType.varchar2, length: 20),
-      OracleColumn(name: 'ERDAT', type: OracleType.date),
-    ],
-  );
-
-  final material = OracleTable(
-    name: 'MATERIAL',
-    schemaId: sap.id,
-    rowCountTarget: 80,
-    synthSeed: 3002,
-    columns: [
-      OracleColumn(name: 'MATNR', type: OracleType.varchar2, length: 18, primaryKey: true, nullable: false),
-      OracleColumn(name: 'MAKTX', type: OracleType.varchar2, length: 40, nullable: false),
-      OracleColumn(name: 'MATKL', type: OracleType.varchar2, length: 9),
-      OracleColumn(name: 'MEINS', type: OracleType.char, length: 3),
-      OracleColumn(name: 'MTART', type: OracleType.char, length: 4),
-    ],
-  );
-
-  final vendor = OracleTable(
-    name: 'VENDOR',
-    schemaId: sap.id,
-    rowCountTarget: 40,
-    synthSeed: 3003,
-    columns: [
-      OracleColumn(name: 'LIFNR', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'NAME1', type: OracleType.varchar2, length: 40, nullable: false, synthHint: 'full_name'),
-      OracleColumn(name: 'LAND1', type: OracleType.char, length: 2, synthHint: 'country'),
-      OracleColumn(name: 'STCEG', type: OracleType.varchar2, length: 20),
-    ],
-  );
-
-  final salesOrg = OracleTable(
-    name: 'SALES_ORG',
-    schemaId: sap.id,
-    rowCountTarget: 3,
-    synthSeed: 3004,
-    columns: [
-      OracleColumn(name: 'VKORG', type: OracleType.char, length: 4, primaryKey: true, nullable: false),
-      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 30, nullable: false),
-      OracleColumn(name: 'WAERS', type: OracleType.char, length: 5, synthHint: 'currency'),
-    ],
-  );
-
-  final salesOrder = OracleTable(
-    name: 'SALES_ORDER',
-    schemaId: sap.id,
-    rowCountTarget: 150,
-    synthSeed: 3005,
-    columns: [
-      OracleColumn(name: 'VBELN', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'KUNNR', type: OracleType.varchar2, length: 10, nullable: false),
-      OracleColumn(name: 'AUDAT', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'NETWR', type: OracleType.number, precision: 13, scale: 2, synthHint: 'amount'),
-      OracleColumn(name: 'WAERK', type: OracleType.char, length: 5, synthHint: 'currency'),
-      OracleColumn(name: 'VKORG', type: OracleType.char, length: 4),
-    ],
-  );
-
-  final salesOrderItem = OracleTable(
-    name: 'SALES_ORDER_ITEM',
-    schemaId: sap.id,
-    rowCountTarget: 400,
-    synthSeed: 3006,
-    columns: [
-      OracleColumn(name: 'VBELN', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'POSNR', type: OracleType.varchar2, length: 6, primaryKey: true, nullable: false),
-      OracleColumn(name: 'MATNR', type: OracleType.varchar2, length: 18),
-      OracleColumn(name: 'KWMENG', type: OracleType.number, precision: 13, scale: 3),
-      OracleColumn(name: 'NETWR', type: OracleType.number, precision: 13, scale: 2, synthHint: 'amount'),
-      OracleColumn(name: 'WAERK', type: OracleType.char, length: 5, synthHint: 'currency'),
-    ],
-  );
-
-  final purchaseOrder = OracleTable(
-    name: 'PURCHASE_ORDER',
-    schemaId: sap.id,
-    rowCountTarget: 90,
-    synthSeed: 3007,
-    columns: [
-      OracleColumn(name: 'EBELN', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'LIFNR', type: OracleType.varchar2, length: 10, nullable: false),
-      OracleColumn(name: 'BEDAT', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'WAERS', type: OracleType.char, length: 5, synthHint: 'currency'),
-    ],
-  );
-
-  final delivery = OracleTable(
-    name: 'DELIVERY',
-    schemaId: sap.id,
-    rowCountTarget: 120,
-    synthSeed: 3008,
-    columns: [
-      OracleColumn(name: 'VBELN', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'LFART', type: OracleType.char, length: 4),
-      OracleColumn(name: 'LFDAT', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'KUNNR', type: OracleType.varchar2, length: 10),
-    ],
-  );
-
-  final pricingCondition = OracleTable(
-    name: 'PRICING_CONDITION',
-    schemaId: sap.id,
-    rowCountTarget: 60,
-    synthSeed: 3009,
-    columns: [
-      OracleColumn(name: 'KNUMH', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'KSCHL', type: OracleType.char, length: 4, nullable: false),
-      OracleColumn(name: 'DATAB', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'DATBI', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'KBETR', type: OracleType.number, precision: 11, scale: 2, synthHint: 'amount'),
-    ],
-  );
-
-  final inventoryStock = OracleTable(
-    name: 'INVENTORY_STOCK',
-    schemaId: sap.id,
-    rowCountTarget: 200,
-    synthSeed: 3010,
-    columns: [
-      OracleColumn(name: 'MATNR', type: OracleType.varchar2, length: 18, primaryKey: true, nullable: false),
-      OracleColumn(name: 'WERKS', type: OracleType.char, length: 4, primaryKey: true, nullable: false),
-      OracleColumn(name: 'LABST', type: OracleType.number, precision: 13, scale: 3),
-      OracleColumn(name: 'MEINS', type: OracleType.char, length: 3),
-    ],
-  );
-
-  final glAccount = OracleTable(
-    name: 'GL_ACCOUNT',
-    schemaId: sap.id,
-    rowCountTarget: 40,
-    synthSeed: 3011,
-    columns: [
-      OracleColumn(name: 'SAKNR', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'TXT50', type: OracleType.varchar2, length: 50, nullable: false),
-      OracleColumn(name: 'BUKRS', type: OracleType.char, length: 4),
-    ],
-  );
-
-  final costCenter = OracleTable(
-    name: 'COST_CENTER',
-    schemaId: sap.id,
-    rowCountTarget: 24,
-    synthSeed: 3012,
-    columns: [
-      OracleColumn(name: 'KOSTL', type: OracleType.varchar2, length: 10, primaryKey: true, nullable: false),
-      OracleColumn(name: 'KTEXT', type: OracleType.varchar2, length: 40, nullable: false, synthHint: 'department'),
-      OracleColumn(name: 'BUKRS', type: OracleType.char, length: 4),
-    ],
-  );
-
-  source.tables.addAll([
-    customer, material, vendor, salesOrg, salesOrder, salesOrderItem,
-    purchaseOrder, delivery, pricingCondition, inventoryStock, glAccount,
-    costCenter,
-  ]);
-
-  // ----- Rule bank (ported from RULE_BANK in ConnectorExpenses) -----------
   source.rules.addAll([
+    // HR.DEPARTMENTS
     DQRule(
-      code: 'V-CUST-001',
-      tableId: customer.id,
+      code: 'R-DEP-001',
+      tableId: departments.id,
       kind: DQKind.notNull,
-      columnName: 'NAME1',
+      columnName: 'DEPARTMENT_NAME',
       severity: DQSeverity.error,
-      message: 'Every customer must have a non-empty name.',
+      message: 'Department name must be set.',
     ),
     DQRule(
-      code: 'V-CUST-002',
-      tableId: customer.id,
+      code: 'R-DEP-002',
+      tableId: departments.id,
       kind: DQKind.inSet,
-      columnName: 'LAND1',
+      columnName: 'COUNTRY_CODE',
       values: List<String>.from(isoCountryCodes),
       severity: DQSeverity.warning,
-      message:
-          'Primary address country code does not resolve to a known ISO code.',
+      message: 'Country code must be a known ISO code.',
     ),
+
+    // HR.JOBS
     DQRule(
-      code: 'V-CUST-003',
-      tableId: customer.id,
-      kind: DQKind.inSet,
-      columnName: 'KTOKD',
-      values: List<String>.from(customerAccountGroups),
-      severity: DQSeverity.warning,
-      message: 'Customer account group (KTOKD) is not a known value.',
-    ),
-    DQRule(
-      code: 'V-MAT-001',
-      tableId: material.id,
+      code: 'R-JOB-001',
+      tableId: jobs.id,
       kind: DQKind.notNull,
-      columnName: 'MATKL',
-      severity: DQSeverity.warning,
-      message: 'Material group is empty for an active material.',
-    ),
-    DQRule(
-      code: 'V-MAT-002',
-      tableId: material.id,
-      kind: DQKind.inSet,
-      columnName: 'MEINS',
-      values: List<String>.from(sapUoms),
+      columnName: 'JOB_TITLE',
       severity: DQSeverity.error,
-      message: 'Base unit of measure does not resolve to a known UoM.',
+      message: 'Job title must be set.',
     ),
     DQRule(
-      code: 'V-MAT-003',
-      tableId: material.id,
-      kind: DQKind.inSet,
-      columnName: 'MTART',
-      values: List<String>.from(materialTypes),
-      severity: DQSeverity.warning,
-      message: 'Material type (MTART) is not a known value.',
-    ),
-    DQRule(
-      code: 'V-SO-001',
-      tableId: salesOrder.id,
-      kind: DQKind.foreignKey,
-      columnName: 'KUNNR',
-      refTableName: 'CUSTOMER',
-      refColumnName: 'KUNNR',
-      severity: DQSeverity.error,
-      message: 'Customer reference does not exist in the customer master.',
-    ),
-    DQRule(
-      code: 'V-SO-002',
-      tableId: salesOrderItem.id,
+      code: 'R-JOB-002',
+      tableId: jobs.id,
       kind: DQKind.positive,
-      columnName: 'KWMENG',
+      columnName: 'MIN_SALARY',
       severity: DQSeverity.error,
-      message: 'Line quantity is not strictly positive.',
+      message: 'Minimum salary must be > 0.',
     ),
+
+    // HR.EMPLOYEES
     DQRule(
-      code: 'V-PRICE-001',
-      tableId: pricingCondition.id,
-      kind: DQKind.datesOrdered,
-      columnName: 'DATAB',
-      secondColumn: 'DATBI',
-      severity: DQSeverity.critical,
-      message:
-          'Pricing condition validity dates are out of order (DATAB > DATBI).',
-    ),
-    DQRule(
-      code: 'V-PRICE-002',
-      tableId: pricingCondition.id,
-      kind: DQKind.inSet,
-      columnName: 'KSCHL',
-      values: List<String>.from(conditionTypes),
-      severity: DQSeverity.warning,
-      message: 'Pricing condition type (KSCHL) is not a known code.',
-    ),
-    DQRule(
-      code: 'V-STOCK-001',
-      tableId: inventoryStock.id,
-      kind: DQKind.range,
-      columnName: 'LABST',
-      min: 0,
+      code: 'R-EMP-001',
+      tableId: employees.id,
+      kind: DQKind.notNull,
+      columnName: 'FIRST_NAME',
       severity: DQSeverity.error,
-      message: 'Inventory stock quantity is negative.',
+      message: 'First name must be set.',
     ),
     DQRule(
-      code: 'V-VENDOR-001',
-      tableId: vendor.id,
+      code: 'R-EMP-002',
+      tableId: employees.id,
+      kind: DQKind.notNull,
+      columnName: 'LAST_NAME',
+      severity: DQSeverity.error,
+      message: 'Last name must be set.',
+    ),
+    DQRule(
+      code: 'R-EMP-003',
+      tableId: employees.id,
       kind: DQKind.regex,
-      columnName: 'STCEG',
-      pattern: r'^[A-Z]{2}[A-Z0-9]{2,12}$',
+      columnName: 'EMAIL',
+      pattern: emailPattern,
       severity: DQSeverity.warning,
-      message: 'Vendor tax ID does not match the expected country format.',
+      message: 'Email must look like name@host.tld.',
+    ),
+    DQRule(
+      code: 'R-EMP-004',
+      tableId: employees.id,
+      kind: DQKind.positive,
+      columnName: 'SALARY',
+      severity: DQSeverity.error,
+      message: 'Salary must be strictly positive.',
+    ),
+    DQRule(
+      code: 'R-EMP-005',
+      tableId: employees.id,
+      kind: DQKind.foreignKey,
+      columnName: 'DEPARTMENT_ID',
+      refTableName: 'DEPARTMENTS',
+      refColumnName: 'DEPARTMENT_ID',
+      severity: DQSeverity.error,
+      message: 'Department must exist in HR.DEPARTMENTS.',
+    ),
+
+    // SALES.CUSTOMERS
+    DQRule(
+      code: 'R-CUS-001',
+      tableId: customers.id,
+      kind: DQKind.notNull,
+      columnName: 'NAME',
+      severity: DQSeverity.error,
+      message: 'Customer name must be set.',
+    ),
+    DQRule(
+      code: 'R-CUS-002',
+      tableId: customers.id,
+      kind: DQKind.inSet,
+      columnName: 'COUNTRY_CODE',
+      values: List<String>.from(isoCountryCodes),
+      severity: DQSeverity.warning,
+      message: 'Country code must be a known ISO code.',
+    ),
+    DQRule(
+      code: 'R-CUS-003',
+      tableId: customers.id,
+      kind: DQKind.inSet,
+      columnName: 'STATUS',
+      values: List<String>.from(statusCodes),
+      severity: DQSeverity.warning,
+      message: 'Status must be one of ACTIVE/INACTIVE/PENDING/CLOSED.',
+    ),
+
+    // SALES.ORDERS
+    DQRule(
+      code: 'R-ORD-001',
+      tableId: orders.id,
+      kind: DQKind.foreignKey,
+      columnName: 'CUSTOMER_ID',
+      refTableName: 'CUSTOMERS',
+      refColumnName: 'CUSTOMER_ID',
+      severity: DQSeverity.error,
+      message: 'Customer must exist in SALES.CUSTOMERS.',
+    ),
+    DQRule(
+      code: 'R-ORD-002',
+      tableId: orders.id,
+      kind: DQKind.positive,
+      columnName: 'AMOUNT',
+      severity: DQSeverity.error,
+      message: 'Order amount must be strictly positive.',
+    ),
+    DQRule(
+      code: 'R-ORD-003',
+      tableId: orders.id,
+      kind: DQKind.inSet,
+      columnName: 'CURRENCY',
+      values: List<String>.from(currencyCodes),
+      severity: DQSeverity.warning,
+      message: 'Currency must be a known ISO 4217 code.',
+    ),
+    DQRule(
+      code: 'R-ORD-004',
+      tableId: orders.id,
+      kind: DQKind.inSet,
+      columnName: 'STATUS',
+      values: List<String>.from(statusCodes),
+      severity: DQSeverity.warning,
+      message: 'Status must be one of ACTIVE/INACTIVE/PENDING/CLOSED.',
     ),
   ]);
 }

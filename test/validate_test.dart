@@ -35,34 +35,34 @@ void main() {
 
     test('foreignKey is enforced across tables', () {
       final master = OracleTable(
-        name: 'CUSTOMER',
+        name: 'CUSTOMERS',
         schemaId: 'x',
         columns: [
-          OracleColumn(name: 'KUNNR', type: OracleType.varchar2, length: 10, primaryKey: true)
+          OracleColumn(name: 'CUSTOMER_ID', type: OracleType.integer, primaryKey: true)
         ],
         rows: [
-          {'KUNNR': 'C001'},
-          {'KUNNR': 'C002'},
+          {'CUSTOMER_ID': 1},
+          {'CUSTOMER_ID': 2},
         ],
       );
       final order = OracleTable(
-        name: 'SALES_ORDER',
+        name: 'ORDERS',
         schemaId: 'x',
         columns: [
-          OracleColumn(name: 'KUNNR', type: OracleType.varchar2, length: 10)
+          OracleColumn(name: 'CUSTOMER_ID', type: OracleType.integer)
         ],
         rows: [
-          {'KUNNR': 'C001'}, // ok
-          {'KUNNR': 'C999'}, // dangling
+          {'CUSTOMER_ID': 1},   // ok
+          {'CUSTOMER_ID': 999}, // dangling
         ],
       );
       final rule = DQRule(
         code: 'FK',
         tableId: order.id,
         kind: DQKind.foreignKey,
-        columnName: 'KUNNR',
-        refTableName: 'CUSTOMER',
-        refColumnName: 'KUNNR',
+        columnName: 'CUSTOMER_ID',
+        refTableName: 'CUSTOMERS',
+        refColumnName: 'CUSTOMER_ID',
         message: 'no such customer',
       );
       final source =
@@ -74,23 +74,23 @@ void main() {
 
     test('datesOrdered flags reversed date ranges', () {
       final t = OracleTable(
-        name: 'PRICING_CONDITION',
+        name: 'CONTRACTS',
         schemaId: 'x',
         columns: [
-          OracleColumn(name: 'DATAB', type: OracleType.date),
-          OracleColumn(name: 'DATBI', type: OracleType.date),
+          OracleColumn(name: 'VALID_FROM', type: OracleType.date),
+          OracleColumn(name: 'VALID_TO', type: OracleType.date),
         ],
         rows: [
-          {'DATAB': '2025-01-01', 'DATBI': '2025-12-31'}, // ok
-          {'DATAB': '2025-12-31', 'DATBI': '2025-01-01'}, // bad
+          {'VALID_FROM': '2025-01-01', 'VALID_TO': '2025-12-31'}, // ok
+          {'VALID_FROM': '2025-12-31', 'VALID_TO': '2025-01-01'}, // bad
         ],
       );
       final rule = DQRule(
         code: 'X-DATES',
         tableId: t.id,
         kind: DQKind.datesOrdered,
-        columnName: 'DATAB',
-        secondColumn: 'DATBI',
+        columnName: 'VALID_FROM',
+        secondColumn: 'VALID_TO',
         message: 'validity dates out of order',
       );
       final v = validateTable(
@@ -104,13 +104,18 @@ void main() {
   });
 
   group('default seed', () {
-    test('SAP_MIRROR schema is present with rule bank', () {
+    test('seeds Oracle-native rules against HR + SALES', () {
       final s = buildDefaultSource();
-      expect(s.schemas.map((x) => x.name), contains('SAP_MIRROR'));
+      expect(s.schemas.map((x) => x.name), containsAll(['HR', 'SALES']));
+      expect(s.schemas.map((x) => x.name), isNot(contains('SAP_MIRROR')));
       expect(s.rules, isNotEmpty);
-      // The classic codes from the original RULE_BANK should be ported.
       final codes = s.rules.map((r) => r.code).toSet();
-      expect(codes, containsAll(['V-CUST-001', 'V-PRICE-001', 'V-SO-001']));
+      expect(codes, containsAll([
+        'R-EMP-003', // EMPLOYEES.EMAIL regex
+        'R-EMP-004', // EMPLOYEES.SALARY positive
+        'R-EMP-005', // EMPLOYEES.DEPARTMENT_ID FK
+        'R-ORD-001', // ORDERS.CUSTOMER_ID FK into CUSTOMERS
+      ]));
     });
   });
 }

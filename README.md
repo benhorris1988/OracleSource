@@ -94,25 +94,6 @@ When a column is generated, the synthesizer picks values based on the **synth hi
 
 Names like `FIRST_NAME`, `EMAIL`, `COUNTRY`, `SALARY`, `*_ID` are auto-detected.
 
-## SAP mirror schema
-
-The default seed also includes a `SAP_MIRROR` schema that ports the canonical SAP entities from the `ConnectorExpenses` reference as Oracle tables — with native SAP column names so the synthetic source feels right at home next to a real one:
-
-| Oracle table | SAP fields |
-|--------------|------------|
-| `CUSTOMER` | `KUNNR`, `NAME1`, `LAND1`, `KTOKD`, `STCEG`, `ERDAT` |
-| `MATERIAL` | `MATNR`, `MAKTX`, `MATKL`, `MEINS`, `MTART` |
-| `VENDOR` | `LIFNR`, `NAME1`, `LAND1`, `STCEG` |
-| `SALES_ORG` | `VKORG`, `NAME`, `WAERS` |
-| `SALES_ORDER` | `VBELN`, `KUNNR`, `AUDAT`, `NETWR`, `WAERK`, `VKORG` |
-| `SALES_ORDER_ITEM` | `VBELN`, `POSNR`, `MATNR`, `KWMENG`, `NETWR`, `WAERK` |
-| `PURCHASE_ORDER` | `EBELN`, `LIFNR`, `BEDAT`, `WAERS` |
-| `DELIVERY` | `VBELN`, `LFART`, `LFDAT`, `KUNNR` |
-| `PRICING_CONDITION` | `KNUMH`, `KSCHL`, `DATAB`, `DATBI`, `KBETR` |
-| `INVENTORY_STOCK` | `MATNR`, `WERKS`, `LABST`, `MEINS` |
-| `GL_ACCOUNT` | `SAKNR`, `TXT50`, `BUKRS` |
-| `COST_CENTER` | `KOSTL`, `KTEXT`, `BUKRS` |
-
 ## Data-quality rules
 
 Each table has a **Rules** tab. Rules are declarative and run by the bundled validator (`lib/data/validate.dart`):
@@ -121,10 +102,25 @@ Each table has a **Rules** tab. Rules are declarative and run by the bundled val
 |------|----------------|
 | `notNull` | value is non-null and non-empty |
 | `regex` | value matches a regular expression |
-| `inSet` | value is one of an allowed list (e.g. ISO codes, SAP UoMs) |
+| `inSet` | value is one of an allowed list (ISO codes, statuses, …) |
 | `positive` | numeric value is strictly > 0 |
 | `range` | numeric value lies within `[min, max]` |
 | `datesOrdered` | date in `column` ≤ date in `secondColumn` |
 | `foreignKey` | value exists in another table's column |
 
-The default seed ports the original `RULE_BANK` codes (`V-CUST-001`, `V-MAT-002`, `V-SO-001`, `V-SO-002`, `V-PRICE-001`, `V-STOCK-001`, `V-VENDOR-001`, …) and pins each one to its target SAP table. Tap the **Validate** icon on a table to surface row-level violations.
+The default seed includes Oracle-native rules against HR + SALES:
+
+| Code | Table | Check |
+|------|-------|-------|
+| `R-DEP-001` | `HR.DEPARTMENTS` | `DEPARTMENT_NAME` not null |
+| `R-DEP-002` | `HR.DEPARTMENTS` | `COUNTRY_CODE` is a known ISO code |
+| `R-JOB-002` | `HR.JOBS` | `MIN_SALARY` is positive |
+| `R-EMP-003` | `HR.EMPLOYEES` | `EMAIL` matches `name@host.tld` |
+| `R-EMP-004` | `HR.EMPLOYEES` | `SALARY` is positive |
+| `R-EMP-005` | `HR.EMPLOYEES` | `DEPARTMENT_ID` foreign-key into `DEPARTMENTS` |
+| `R-CUS-002` | `SALES.CUSTOMERS` | `COUNTRY_CODE` is a known ISO code |
+| `R-ORD-001` | `SALES.ORDERS` | `CUSTOMER_ID` foreign-key into `CUSTOMERS` |
+| `R-ORD-002` | `SALES.ORDERS` | `AMOUNT` is positive |
+| `R-ORD-003` | `SALES.ORDERS` | `CURRENCY` is a known ISO 4217 code |
+
+Tap the **Validate** icon on a table to surface row-level violations.
