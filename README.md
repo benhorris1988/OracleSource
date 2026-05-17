@@ -93,3 +93,38 @@ When a column is generated, the synthesizer picks values based on the **synth hi
 | _(auto)_ | inferred from column name + Oracle type |
 
 Names like `FIRST_NAME`, `EMAIL`, `COUNTRY`, `SALARY`, `*_ID` are auto-detected.
+
+## SAP mirror schema
+
+The default seed also includes a `SAP_MIRROR` schema that ports the canonical SAP entities from the `ConnectorExpenses` reference as Oracle tables — with native SAP column names so the synthetic source feels right at home next to a real one:
+
+| Oracle table | SAP fields |
+|--------------|------------|
+| `CUSTOMER` | `KUNNR`, `NAME1`, `LAND1`, `KTOKD`, `STCEG`, `ERDAT` |
+| `MATERIAL` | `MATNR`, `MAKTX`, `MATKL`, `MEINS`, `MTART` |
+| `VENDOR` | `LIFNR`, `NAME1`, `LAND1`, `STCEG` |
+| `SALES_ORG` | `VKORG`, `NAME`, `WAERS` |
+| `SALES_ORDER` | `VBELN`, `KUNNR`, `AUDAT`, `NETWR`, `WAERK`, `VKORG` |
+| `SALES_ORDER_ITEM` | `VBELN`, `POSNR`, `MATNR`, `KWMENG`, `NETWR`, `WAERK` |
+| `PURCHASE_ORDER` | `EBELN`, `LIFNR`, `BEDAT`, `WAERS` |
+| `DELIVERY` | `VBELN`, `LFART`, `LFDAT`, `KUNNR` |
+| `PRICING_CONDITION` | `KNUMH`, `KSCHL`, `DATAB`, `DATBI`, `KBETR` |
+| `INVENTORY_STOCK` | `MATNR`, `WERKS`, `LABST`, `MEINS` |
+| `GL_ACCOUNT` | `SAKNR`, `TXT50`, `BUKRS` |
+| `COST_CENTER` | `KOSTL`, `KTEXT`, `BUKRS` |
+
+## Data-quality rules
+
+Each table has a **Rules** tab. Rules are declarative and run by the bundled validator (`lib/data/validate.dart`):
+
+| Kind | What it checks |
+|------|----------------|
+| `notNull` | value is non-null and non-empty |
+| `regex` | value matches a regular expression |
+| `inSet` | value is one of an allowed list (e.g. ISO codes, SAP UoMs) |
+| `positive` | numeric value is strictly > 0 |
+| `range` | numeric value lies within `[min, max]` |
+| `datesOrdered` | date in `column` ≤ date in `secondColumn` |
+| `foreignKey` | value exists in another table's column |
+
+The default seed ports the original `RULE_BANK` codes (`V-CUST-001`, `V-MAT-002`, `V-SO-001`, `V-SO-002`, `V-PRICE-001`, `V-STOCK-001`, `V-VENDOR-001`, …) and pins each one to its target SAP table. Tap the **Validate** icon on a table to surface row-level violations.

@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../app.dart';
 import '../data/export.dart';
+import '../data/validate.dart';
+import '../models/dq_rule.dart';
 import '../models/oracle_source.dart';
 import 'add_table_dialog.dart';
 import 'column_editor.dart';
+import 'rule_editor.dart';
 
 class TablePage extends StatelessWidget {
   const TablePage({super.key, required this.tableId});
@@ -21,7 +24,7 @@ class TablePage extends StatelessWidget {
     final schema = store.source.schemaById(table.schemaId);
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text('${schema?.name ?? ''}.${table.name}'),
@@ -34,6 +37,18 @@ class TablePage extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Regenerated ${table.rowCountTarget} rows')),
                 );
+              },
+            ),
+            IconButton(
+              tooltip: 'Validate',
+              icon: const Icon(Icons.fact_check_outlined),
+              onPressed: () {
+                final violations = validateTable(
+                  source: store.source,
+                  table: table,
+                  rules: store.rulesFor(tableId),
+                );
+                _showViolations(context, table, violations);
               },
             ),
             PopupMenuButton<String>(
@@ -83,6 +98,7 @@ class TablePage extends StatelessWidget {
             tabs: [
               Tab(icon: Icon(Icons.view_column_outlined), text: 'Columns'),
               Tab(icon: Icon(Icons.grid_on_outlined), text: 'Data'),
+              Tab(icon: Icon(Icons.rule_folder_outlined), text: 'Rules'),
             ],
           ),
         ),
@@ -90,6 +106,7 @@ class TablePage extends StatelessWidget {
           children: [
             _ColumnsTab(table: table),
             _DataTab(table: table),
+            _RulesTab(table: table),
           ],
         ),
       ),
@@ -408,6 +425,214 @@ Future<bool> _confirm(
     ),
   );
   return res ?? false;
+}
+
+class _RulesTab extends StatelessWidget {
+  const _RulesTab({required this.table});
+  final OracleTable table;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = SourceStoreScope.of(context);
+    final rules = store.rulesFor(table.id);
+
+    return Scaffold(
+      body: rules.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.rule_folder_outlined, size: 48),
+                    const SizedBox(height: 12),
+                    Text('No rules yet',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Add data-quality checks to flag bad rows '
+                      '(NOT NULL, regex, FK, date ordering, …).',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => _addRule(context),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add rule'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: rules.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 4),
+              itemBuilder: (_, i) => _RuleCard(rule: rules[i], table: table),
+            ),
+      floatingActionButton: rules.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _addRule(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Add rule'),
+            ),
+    );
+  }
+
+  Future<void> _addRule(BuildContext context) async {
+    final store = SourceStoreScope.of(context);
+    final rule = await showDialog<DQRule>(
+      context: context,
+      builder: (_) => RuleEditorDialog(
+        table: table,
+        allTables: store.source.tables,
+      ),
+    );
+    if (rule == null || !context.mounted) return;
+    store.addRule(rule);
+  }
+}
+
+class _RuleCard extends StatelessWidget {
+  const _RuleCard({required this.rule, required this.table});
+  final DQRule rule;
+  final OracleTable table;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = SourceStoreScope.of(context);
+    return Card(
+      child: ListTile(
+        leading: _SeverityIcon(severity: rule.severity),
+        title: Text('${rule.code}  ·  ${rule.kind.label}'),
+        subtitle: Text(
+          '${rule.columnName}${rule.secondColumn != null ? ' / ${rule.secondColumn}' : ''}'
+          '\n${rule.message}',
+        ),
+        isThreeLine: true,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Edit',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () async {
+                final updated = await showDialog<DQRule>(
+                  context: context,
+                  builder: (_) => RuleEditorDialog(
+                    table: table,
+                    allTables: store.source.tables,
+                    initial: rule,
+                  ),
+                );
+                if (updated != null) store.updateRule(updated);
+              },
+            ),
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                final ok = await _confirm(
+                  context,
+                  title: 'Delete ${rule.code}?',
+                  body: 'Removes the rule from this table.',
+                );
+                if (ok && context.mounted) store.deleteRule(rule.id);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SeverityIcon extends StatelessWidget {
+  const _SeverityIcon({required this.severity});
+  final DQSeverity severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = switch (severity) {
+      DQSeverity.critical => (Icons.shield_outlined, Colors.red.shade700),
+      DQSeverity.error => (Icons.error_outline, Colors.red.shade600),
+      DQSeverity.warning => (Icons.warning_amber_outlined, Colors.amber.shade700),
+      DQSeverity.info => (Icons.info_outline, Colors.blue.shade600),
+    };
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: color.withOpacity(0.15),
+      foregroundColor: color,
+      child: Icon(icon, size: 18),
+    );
+  }
+}
+
+void _showViolations(
+  BuildContext context,
+  OracleTable table,
+  List<DQViolation> violations,
+) {
+  showDialog<void>(
+    context: context,
+    builder: (_) => Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      violations.isEmpty
+                          ? 'All rules pass on ${table.name}'
+                          : '${violations.length} violation(s) in ${table.name}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: violations.isEmpty
+                    ? const Center(
+                        child: Icon(Icons.check_circle_outline,
+                            size: 48, color: Colors.green),
+                      )
+                    : ListView.separated(
+                        itemCount: violations.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final v = violations[i];
+                          return ListTile(
+                            dense: true,
+                            leading: _SeverityIcon(severity: v.rule.severity),
+                            title: Text(
+                              '${v.rule.code} · row ${v.rowIndex + 1} · ${v.columnName}',
+                              style: const TextStyle(fontFamily: 'monospace'),
+                            ),
+                            subtitle: Text(
+                              '${v.rule.message}\nvalue: ${v.value ?? 'NULL'}',
+                            ),
+                            isThreeLine: true,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 void _showSql(BuildContext context, String sql) {

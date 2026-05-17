@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/persistence.dart';
 import '../data/seed.dart';
 import '../data/synth.dart';
+import '../models/dq_rule.dart';
 import '../models/oracle_source.dart';
 
 class SourceStore extends ChangeNotifier {
@@ -201,6 +202,30 @@ class SourceStore extends ChangeNotifier {
     if (t == null) return;
     if (rowIdx < 0 || rowIdx >= t.rows.length) return;
     t.rows.removeAt(rowIdx);
+    notifyListeners();
+    _persist();
+  }
+
+  // -- DQ rules -------------------------------------------------------------
+
+  List<DQRule> rulesFor(String tableId) => source.rulesFor(tableId);
+
+  void addRule(DQRule rule) {
+    source.rules.add(rule);
+    notifyListeners();
+    _persist();
+  }
+
+  void updateRule(DQRule rule) {
+    final idx = source.rules.indexWhere((r) => r.id == rule.id);
+    if (idx < 0) return;
+    source.rules[idx] = rule;
+    notifyListeners();
+    _persist();
+  }
+
+  void deleteRule(String ruleId) {
+    source.rules.removeWhere((r) => r.id == ruleId);
     notifyListeners();
     _persist();
   }

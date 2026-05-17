@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import 'dq_rule.dart';
 import 'oracle_type.dart';
 
 const _uuid = Uuid();
@@ -156,8 +157,10 @@ class OracleSource {
     this.serviceName = 'ORCLPDB1',
     List<OracleSchema>? schemas,
     List<OracleTable>? tables,
+    List<DQRule>? rules,
   })  : schemas = schemas ?? [],
-        tables = tables ?? [];
+        tables = tables ?? [],
+        rules = rules ?? [];
 
   String name;
   String host;
@@ -165,6 +168,7 @@ class OracleSource {
   String serviceName;
   List<OracleSchema> schemas;
   List<OracleTable> tables;
+  List<DQRule> rules;
 
   List<OracleTable> tablesIn(String schemaId) =>
       tables.where((t) => t.schemaId == schemaId).toList()
@@ -173,6 +177,13 @@ class OracleSource {
   OracleSchema? schemaById(String id) =>
       schemas.where((s) => s.id == id).firstOrNull;
 
+  OracleTable? tableById(String id) =>
+      tables.where((t) => t.id == id).firstOrNull;
+
+  List<DQRule> rulesFor(String tableId) =>
+      rules.where((r) => r.tableId == tableId).toList()
+        ..sort((a, b) => a.code.compareTo(b.code));
+
   Map<String, dynamic> toJson() => {
         'name': name,
         'host': host,
@@ -180,6 +191,7 @@ class OracleSource {
         'serviceName': serviceName,
         'schemas': schemas.map((s) => s.toJson()).toList(),
         'tables': tables.map((t) => t.toJson()).toList(),
+        'rules': rules.map((r) => r.toJson()).toList(),
       };
 
   factory OracleSource.fromJson(Map<String, dynamic> j) => OracleSource(
@@ -192,6 +204,9 @@ class OracleSource {
             .toList(),
         tables: (j['tables'] as List<dynamic>? ?? [])
             .map((t) => OracleTable.fromJson(t as Map<String, dynamic>))
+            .toList(),
+        rules: (j['rules'] as List<dynamic>? ?? [])
+            .map((r) => DQRule.fromJson(r as Map<String, dynamic>))
             .toList(),
       );
 }
