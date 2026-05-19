@@ -72,14 +72,53 @@ void main() {
   });
 
   group('buildDefaultSource', () {
-    test('returns a populated HR + SALES seed', () {
+    test('returns a populated IFSAPP seed', () {
       final s = buildDefaultSource();
-      expect(s.schemas.map((s) => s.name), containsAll(['HR', 'SALES']));
-      expect(s.tables.length, greaterThanOrEqualTo(5));
+      expect(s.schemas.map((s) => s.name), contains('IFSAPP'));
+      expect(s.tables.length, greaterThanOrEqualTo(10));
+      // Spot-check that a few canonical IFS tables are present.
+      final tableNames = s.tables.map((t) => t.name).toSet();
+      expect(
+        tableNames,
+        containsAll([
+          'COMPANY_TAB',
+          'SITE_TAB',
+          'CUSTOMER_INFO_TAB',
+          'CUSTOMER_ORDER_TAB',
+          'CUSTOMER_ORDER_LINE_TAB',
+          'PURCHASE_ORDER_TAB',
+          'INVENTORY_PART_TAB',
+        ]),
+      );
       for (final t in s.tables) {
         expect(t.columns, isNotEmpty);
         expect(t.rows, isNotEmpty);
       }
+    });
+
+    test('identity anchors flow into generated rows', () {
+      final s = buildDefaultSource()
+        ..ownerUser = 'ACME_DBA'
+        ..companyCode = '99'
+        ..defaultSite = 'S099'
+        ..defaultCurrency = 'GBP';
+
+      final anchors = SynthAnchors.fromSource(s);
+      for (final t in s.tables) {
+        synthesizeRows(t, anchors: anchors);
+      }
+
+      final customer =
+          s.tables.firstWhere((t) => t.name == 'CUSTOMER_INFO_TAB');
+      final ownerValues =
+          customer.rows.map((r) => r['OWNER_USER']).whereType<String>().toSet();
+      expect(ownerValues, {'ACME_DBA'});
+
+      final currencyValues = customer.rows
+          .map((r) => r['CURRENCY_CODE'])
+          .whereType<String>()
+          .toSet();
+      expect(currencyValues, contains('GBP'));
     });
   });
 }

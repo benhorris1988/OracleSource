@@ -63,7 +63,47 @@ const _jobTitles = [
 const _currencies = ['USD', 'EUR', 'GBP', 'JPY', 'INR', 'AUD', 'CAD'];
 const _statuses = ['ACTIVE', 'INACTIVE', 'PENDING', 'CLOSED'];
 
-dynamic _synthValue(OracleColumn col, SeededRandom r, int rowIdx) {
+/// IFS-style object-state values, covering the common state machines used
+/// across customer orders, purchase orders and similar transactional tables.
+const _objStates = [
+  'Planned', 'Released', 'Reserved', 'Picked', 'Delivered', 'Invoiced',
+  'Closed', 'Cancelled',
+];
+
+/// Secondary sites + companies seeded so that `site_ref` / `company_ref`
+/// columns have valid FK targets even when not pointing at the anchor.
+const _siteCodes = ['S001', 'S002', 'S003'];
+const _companyCodes = ['10', '20', '30'];
+
+/// Anchor values plumbed through from the OracleSource so synthesized
+/// data feels tenanted to a single IFS install.
+class SynthAnchors {
+  const SynthAnchors({
+    this.ownerUser = 'IFSAPP',
+    this.companyCode = '10',
+    this.defaultSite = 'S001',
+    this.defaultCurrency = 'USD',
+  });
+
+  final String ownerUser;
+  final String companyCode;
+  final String defaultSite;
+  final String defaultCurrency;
+
+  factory SynthAnchors.fromSource(OracleSource s) => SynthAnchors(
+        ownerUser: s.ownerUser,
+        companyCode: s.companyCode,
+        defaultSite: s.defaultSite,
+        defaultCurrency: s.defaultCurrency,
+      );
+}
+
+dynamic _synthValue(
+  OracleColumn col,
+  SeededRandom r,
+  int rowIdx,
+  SynthAnchors anchors,
+) {
   final hint = (col.synthHint ?? _inferHint(col.name)).toLowerCase();
 
   switch (hint) {
@@ -100,6 +140,40 @@ dynamic _synthValue(OracleColumn col, SeededRandom r, int rowIdx) {
     case 'boolean':
     case 'flag':
       return r.chance(0.5) ? 1 : 0;
+
+    // -- IFS-flavoured hints ------------------------------------------------
+    case 'owner_user':
+      return anchors.ownerUser;
+    case 'site_master':
+      return _siteCodes[rowIdx % _siteCodes.length];
+    case 'site_ref':
+      // 70% anchor site, otherwise a sibling site from the seeded master set.
+      return r.chance(0.7)
+          ? anchors.defaultSite
+          : r.pick(_siteCodes.where((s) => s != anchors.defaultSite).toList());
+    case 'company_master':
+      return _companyCodes[rowIdx % _companyCodes.length];
+    case 'company_ref':
+      return r.chance(0.7)
+          ? anchors.companyCode
+          : r.pick(_companyCodes.where((c) => c != anchors.companyCode).toList());
+    case 'currency_ref':
+      return r.chance(0.7) ? anchors.defaultCurrency : r.pick(_currencies);
+    case 'objstate':
+      return r.pick(_objStates);
+    case 'part_no':
+      return 'PRT-${(rowIdx + 1).toString().padLeft(5, '0')}';
+    case 'id_code':
+      // Derive a readable prefix from the column name, e.g.
+      // CUSTOMER_ID -> CUSTOMER-00001, PERSON_ID -> PERSON-00001.
+      final prefix = col.name.split('_').first.toUpperCase();
+      return '$prefix-${(rowIdx + 1).toString().padLeft(5, '0')}';
+    case 'serial_no':
+      return 'SN-${r.nextInt(100000, 999999)}';
+    case 'order_no':
+      return 'CO-${(rowIdx + 1).toString().padLeft(6, '0')}';
+    case 'po_no':
+      return 'PO-${(rowIdx + 1).toString().padLeft(6, '0')}';
   }
 
   switch (col.type) {
@@ -153,8 +227,10 @@ String _inferHint(String columnName) {
 }
 
 /// Replace `table.rows` with newly synthesized data based on its columns,
-/// row target and seed.
-void synthesizeRows(OracleTable table) {
+/// row target and seed. If `anchors` is provided (typically built from the
+/// owning `OracleSource`) IFS-flavoured columns route through it.
+void synthesizeRows(OracleTable table, {SynthAnchors? anchors}) {
+  final a = anchors ?? const SynthAnchors();
   final seed = table.synthSeed ?? table.name.hashCode;
   final rnd = SeededRandom(seed);
   final newRows = <Map<String, dynamic>>[];
@@ -165,14 +241,18 @@ void synthesizeRows(OracleTable table) {
     final row = <String, dynamic>{};
     for (final col in table.columns) {
       if (col.primaryKey && pkCols.length == 1) {
-        row[col.name] = i + 1;
-        continue;
+        // For numeric PKs use a row-index sequence; for string PKs (e.g. SITE)
+        // defer to the synth hint so master tables can emit S001/S002/...
+        if (col.type == OracleType.integer || col.type == OracleType.number) {
+          row[col.name] = i + 1;
+          continue;
+        }
       }
-      if (col.nullable && rnd.chance(0.04)) {
+      if (col.nullable && !col.primaryKey && rnd.chance(0.04)) {
         row[col.name] = null;
         continue;
       }
-      row[col.name] = _synthValue(col, rnd, i);
+      row[col.name] = _synthValue(col, rnd, i, a);
     }
     newRows.add(row);
   }

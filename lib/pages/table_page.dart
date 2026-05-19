@@ -6,6 +6,7 @@ import '../data/export.dart';
 import '../data/validate.dart';
 import '../models/dq_rule.dart';
 import '../models/oracle_source.dart';
+import '../models/oracle_type.dart';
 import 'add_table_dialog.dart';
 import 'column_editor.dart';
 import 'rule_editor.dart';

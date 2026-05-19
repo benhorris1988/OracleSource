@@ -43,10 +43,11 @@ class _OracleSourceAppState extends State<OracleSourceApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: SourceStoreScope(
+      builder: (context, child) => SourceStoreScope(
         store: widget.store,
-        child: HomePage(onToggleTheme: _toggleMode),
+        child: child ?? const SizedBox.shrink(),
       ),
+      home: HomePage(onToggleTheme: _toggleMode),
     );
   }
 }

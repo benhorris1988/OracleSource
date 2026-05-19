@@ -104,18 +104,20 @@ void main() {
   });
 
   group('default seed', () {
-    test('seeds Oracle-native rules against HR + SALES', () {
+    test('seeds IFS-flavoured rules against IFSAPP tables', () {
       final s = buildDefaultSource();
-      expect(s.schemas.map((x) => x.name), containsAll(['HR', 'SALES']));
-      expect(s.schemas.map((x) => x.name), isNot(contains('SAP_MIRROR')));
+      expect(s.schemas.map((x) => x.name), contains('IFSAPP'));
       expect(s.rules, isNotEmpty);
       final codes = s.rules.map((r) => r.code).toSet();
-      expect(codes, containsAll([
-        'R-EMP-003', // EMPLOYEES.EMAIL regex
-        'R-EMP-004', // EMPLOYEES.SALARY positive
-        'R-EMP-005', // EMPLOYEES.DEPARTMENT_ID FK
-        'R-ORD-001', // ORDERS.CUSTOMER_ID FK into CUSTOMERS
-      ]));
+      expect(
+        codes,
+        containsAll([
+          'R-SIT-002', // SITE.COMPANY FK → COMPANY_TAB
+          'R-PRT-001', // INVENTORY_PART_TAB.CONTRACT FK → SITE_TAB
+          'R-COH-001', // CUSTOMER_ORDER_TAB.CUSTOMER_NO FK → CUSTOMER_INFO_TAB
+          'R-POH-001', // PURCHASE_ORDER_TAB.SUPPLIER_NO FK → SUPPLIER_INFO_TAB
+        ]),
+      );
     });
   });
 }

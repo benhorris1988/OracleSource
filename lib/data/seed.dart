@@ -4,194 +4,305 @@ import '../models/oracle_type.dart';
 import 'lookups.dart';
 import 'synth.dart';
 
-/// A default Oracle-style source seeded with the classic HR + SALES sample
-/// schemas, populated with deterministic synthetic rows and a small bank of
-/// data-quality rules so the validator has something to chew on immediately.
+/// A default IFS-style source seeded with a representative mix of IFSAPP
+/// tables (master + transactional), populated with deterministic synthetic
+/// rows that respect the source-level identity anchors (owner user, company,
+/// site, currency) and a small bank of IFS-flavoured data-quality rules.
 OracleSource buildDefaultSource() {
   final source = OracleSource(
-    name: 'ORACLE_DEV',
+    name: 'IFS_DEV',
     host: 'localhost',
     port: 1521,
-    serviceName: 'ORCLPDB1',
+    serviceName: 'IFSPRD',
+    ownerUser: 'IFSAPP',
+    companyCode: '10',
+    defaultSite: 'S001',
+    defaultCurrency: 'USD',
   );
 
-  _seedHr(source);
-  _seedSales(source);
+  _seedIfs(source);
   _seedRules(source);
 
+  final anchors = SynthAnchors.fromSource(source);
   for (final t in source.tables) {
-    synthesizeRows(t);
+    synthesizeRows(t, anchors: anchors);
   }
   return source;
 }
 
-// ---------------------------------------------------------------------------
-// HR (employees, departments, jobs)
-// ---------------------------------------------------------------------------
-
-void _seedHr(OracleSource source) {
-  final hr = OracleSchema(
-    name: 'HR',
-    description: 'Human Resources — employees, departments, jobs.',
+void _seedIfs(OracleSource source) {
+  final ifs = OracleSchema(
+    name: 'IFSAPP',
+    description:
+        'IFS Applications owner schema — companies, sites, parts, orders.',
   );
-  source.schemas.add(hr);
+  source.schemas.add(ifs);
+
+  // -- Master data ----------------------------------------------------------
 
   source.tables.add(OracleTable(
-    name: 'DEPARTMENTS',
-    schemaId: hr.id,
-    rowCountTarget: 12,
+    name: 'COMPANY_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 3,
     synthSeed: 1001,
     columns: [
-      OracleColumn(name: 'DEPARTMENT_ID', type: OracleType.integer, primaryKey: true, nullable: false),
-      OracleColumn(name: 'DEPARTMENT_NAME', type: OracleType.varchar2, length: 30, nullable: false, synthHint: 'department'),
-      OracleColumn(name: 'LOCATION', type: OracleType.varchar2, length: 30, synthHint: 'city'),
-      OracleColumn(name: 'COUNTRY_CODE', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, primaryKey: true, nullable: false, synthHint: 'company_master'),
+      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 100, nullable: false, synthHint: 'full_name'),
+      OracleColumn(name: 'ASSOCIATION_NO', type: OracleType.varchar2, length: 20),
+      OracleColumn(name: 'COUNTRY', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'CURRENCY_CODE', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+      OracleColumn(name: 'CREATED', type: OracleType.timestamp),
     ],
   ));
 
   source.tables.add(OracleTable(
-    name: 'JOBS',
-    schemaId: hr.id,
-    rowCountTarget: 12,
+    name: 'SITE_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 3,
     synthSeed: 1002,
     columns: [
-      OracleColumn(name: 'JOB_ID', type: OracleType.integer, primaryKey: true, nullable: false),
-      OracleColumn(name: 'JOB_TITLE', type: OracleType.varchar2, length: 40, nullable: false, synthHint: 'job_title'),
-      OracleColumn(name: 'MIN_SALARY', type: OracleType.number, precision: 8, scale: 2, synthHint: 'salary'),
-      OracleColumn(name: 'MAX_SALARY', type: OracleType.number, precision: 8, scale: 2, synthHint: 'salary'),
+      OracleColumn(name: 'SITE', type: OracleType.varchar2, length: 5, primaryKey: true, nullable: false, synthHint: 'site_master'),
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, nullable: false, synthHint: 'site_master'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, nullable: false, synthHint: 'company_ref'),
+      OracleColumn(name: 'DESCRIPTION', type: OracleType.varchar2, length: 100, synthHint: 'city'),
+      OracleColumn(name: 'COUNTRY_CODE', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'TIME_ZONE', type: OracleType.varchar2, length: 40),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
     ],
   ));
 
   source.tables.add(OracleTable(
-    name: 'EMPLOYEES',
-    schemaId: hr.id,
-    rowCountTarget: 80,
+    name: 'PERSON_INFO_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 40,
     synthSeed: 1003,
     columns: [
-      OracleColumn(name: 'EMPLOYEE_ID', type: OracleType.integer, primaryKey: true, nullable: false),
-      OracleColumn(name: 'FIRST_NAME', type: OracleType.varchar2, length: 20, nullable: false),
-      OracleColumn(name: 'LAST_NAME', type: OracleType.varchar2, length: 25, nullable: false),
-      OracleColumn(name: 'EMAIL', type: OracleType.varchar2, length: 50, unique: true),
-      OracleColumn(name: 'PHONE_NUMBER', type: OracleType.varchar2, length: 20),
-      OracleColumn(name: 'HIRE_DATE', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'JOB_TITLE', type: OracleType.varchar2, length: 40, synthHint: 'job_title'),
-      OracleColumn(name: 'SALARY', type: OracleType.number, precision: 8, scale: 2, synthHint: 'salary'),
-      OracleColumn(name: 'DEPARTMENT_ID', type: OracleType.integer),
+      OracleColumn(name: 'PERSON_ID', type: OracleType.varchar2, length: 20, primaryKey: true, nullable: false, synthHint: 'id_code'),
+      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 100, nullable: false, synthHint: 'full_name'),
+      OracleColumn(name: 'FIRST_NAME', type: OracleType.varchar2, length: 50, synthHint: 'first_name'),
+      OracleColumn(name: 'LAST_NAME', type: OracleType.varchar2, length: 50, synthHint: 'last_name'),
+      OracleColumn(name: 'EMAIL', type: OracleType.varchar2, length: 100, synthHint: 'email'),
+      OracleColumn(name: 'PHONE', type: OracleType.varchar2, length: 30, synthHint: 'phone'),
+      OracleColumn(name: 'COUNTRY', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, synthHint: 'company_ref'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
     ],
   ));
-}
-
-// ---------------------------------------------------------------------------
-// SALES (customers, orders)
-// ---------------------------------------------------------------------------
-
-void _seedSales(OracleSource source) {
-  final sales = OracleSchema(
-    name: 'SALES',
-    description: 'Customer and order data.',
-  );
-  source.schemas.add(sales);
 
   source.tables.add(OracleTable(
-    name: 'CUSTOMERS',
-    schemaId: sales.id,
+    name: 'USER_ALLOWED_SITE_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 30,
+    synthSeed: 1004,
+    columns: [
+      OracleColumn(name: 'USER_ALLOWED_SITE_ID', type: OracleType.integer, primaryKey: true, nullable: false),
+      OracleColumn(name: 'IDENTITY', type: OracleType.varchar2, length: 30, nullable: false, synthHint: 'owner_user'),
+      OracleColumn(name: 'SITE', type: OracleType.varchar2, length: 5, nullable: false, synthHint: 'site_ref'),
+      OracleColumn(name: 'DEFAULT_SITE', type: OracleType.varchar2, length: 5, synthHint: 'flag'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+    ],
+  ));
+
+  source.tables.add(OracleTable(
+    name: 'CUSTOMER_INFO_TAB',
+    schemaId: ifs.id,
     rowCountTarget: 60,
     synthSeed: 2001,
     columns: [
-      OracleColumn(name: 'CUSTOMER_ID', type: OracleType.integer, primaryKey: true, nullable: false),
-      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 60, nullable: false, synthHint: 'full_name'),
-      OracleColumn(name: 'EMAIL', type: OracleType.varchar2, length: 60),
-      OracleColumn(name: 'COUNTRY_CODE', type: OracleType.char, length: 2, synthHint: 'country'),
-      OracleColumn(name: 'STATUS', type: OracleType.varchar2, length: 10, synthHint: 'status'),
-      OracleColumn(name: 'CREATED_AT', type: OracleType.timestamp),
+      OracleColumn(name: 'CUSTOMER_ID', type: OracleType.varchar2, length: 20, primaryKey: true, nullable: false, synthHint: 'id_code'),
+      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 100, nullable: false, synthHint: 'full_name'),
+      OracleColumn(name: 'ASSOCIATION_NO', type: OracleType.varchar2, length: 20),
+      OracleColumn(name: 'COUNTRY', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, synthHint: 'company_ref'),
+      OracleColumn(name: 'CURRENCY_CODE', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'CATEGORY', type: OracleType.varchar2, length: 20, synthHint: 'status'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+      OracleColumn(name: 'CREATED', type: OracleType.timestamp),
     ],
   ));
 
   source.tables.add(OracleTable(
-    name: 'ORDERS',
-    schemaId: sales.id,
-    rowCountTarget: 120,
+    name: 'SUPPLIER_INFO_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 40,
     synthSeed: 2002,
     columns: [
-      OracleColumn(name: 'ORDER_ID', type: OracleType.integer, primaryKey: true, nullable: false),
-      OracleColumn(name: 'CUSTOMER_ID', type: OracleType.integer, nullable: false),
+      OracleColumn(name: 'SUPPLIER_ID', type: OracleType.varchar2, length: 20, primaryKey: true, nullable: false, synthHint: 'id_code'),
+      OracleColumn(name: 'NAME', type: OracleType.varchar2, length: 100, nullable: false, synthHint: 'full_name'),
+      OracleColumn(name: 'ASSOCIATION_NO', type: OracleType.varchar2, length: 20),
+      OracleColumn(name: 'COUNTRY', type: OracleType.char, length: 2, synthHint: 'country'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, synthHint: 'company_ref'),
+      OracleColumn(name: 'CURRENCY_CODE', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+    ],
+  ));
+
+  source.tables.add(OracleTable(
+    name: 'INVENTORY_PART_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 80,
+    synthSeed: 2003,
+    columns: [
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, primaryKey: true, nullable: false, synthHint: 'site_ref'),
+      OracleColumn(name: 'PART_NO', type: OracleType.varchar2, length: 25, primaryKey: true, nullable: false, synthHint: 'part_no'),
+      OracleColumn(name: 'DESCRIPTION', type: OracleType.varchar2, length: 100),
+      OracleColumn(name: 'UNIT_MEAS', type: OracleType.varchar2, length: 10),
+      OracleColumn(name: 'PART_STATUS', type: OracleType.varchar2, length: 10, synthHint: 'status'),
+      OracleColumn(name: 'PLANNER_BUYER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+      OracleColumn(name: 'INVENTORY_VALUATION_METHOD', type: OracleType.varchar2, length: 20),
+      OracleColumn(name: 'TYPE_CODE', type: OracleType.varchar2, length: 5),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+    ],
+  ));
+
+  // -- Transactional --------------------------------------------------------
+
+  source.tables.add(OracleTable(
+    name: 'CUSTOMER_ORDER_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 120,
+    synthSeed: 3001,
+    columns: [
+      OracleColumn(name: 'ORDER_NO', type: OracleType.varchar2, length: 12, primaryKey: true, nullable: false, synthHint: 'order_no'),
+      OracleColumn(name: 'CUSTOMER_NO', type: OracleType.varchar2, length: 20, nullable: false),
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, nullable: false, synthHint: 'site_ref'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, synthHint: 'company_ref'),
+      OracleColumn(name: 'CURRENCY', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'WANTED_DELIVERY_DATE', type: OracleType.date),
       OracleColumn(name: 'ORDER_DATE', type: OracleType.date, nullable: false),
-      OracleColumn(name: 'AMOUNT', type: OracleType.number, precision: 10, scale: 2, synthHint: 'amount'),
-      OracleColumn(name: 'CURRENCY', type: OracleType.char, length: 3, synthHint: 'currency'),
-      OracleColumn(name: 'STATUS', type: OracleType.varchar2, length: 10, synthHint: 'status'),
+      OracleColumn(name: 'AUTHORIZE_CODE', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+    ],
+  ));
+
+  source.tables.add(OracleTable(
+    name: 'CUSTOMER_ORDER_LINE_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 200,
+    synthSeed: 3002,
+    columns: [
+      OracleColumn(name: 'LINE_ID', type: OracleType.integer, primaryKey: true, nullable: false),
+      OracleColumn(name: 'ORDER_NO', type: OracleType.varchar2, length: 12, nullable: false),
+      OracleColumn(name: 'LINE_NO', type: OracleType.varchar2, length: 4),
+      OracleColumn(name: 'REL_NO', type: OracleType.varchar2, length: 4),
+      OracleColumn(name: 'CATALOG_NO', type: OracleType.varchar2, length: 25, synthHint: 'part_no'),
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, synthHint: 'site_ref'),
+      OracleColumn(name: 'BUY_QTY_DUE', type: OracleType.number, precision: 14, scale: 3),
+      OracleColumn(name: 'SALE_UNIT_PRICE', type: OracleType.number, precision: 14, scale: 2, synthHint: 'amount'),
+      OracleColumn(name: 'CURRENCY', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'WANTED_DELIVERY_DATE', type: OracleType.date),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+    ],
+  ));
+
+  source.tables.add(OracleTable(
+    name: 'PURCHASE_ORDER_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 80,
+    synthSeed: 4001,
+    columns: [
+      OracleColumn(name: 'ORDER_NO', type: OracleType.varchar2, length: 12, primaryKey: true, nullable: false, synthHint: 'po_no'),
+      OracleColumn(name: 'SUPPLIER_NO', type: OracleType.varchar2, length: 20, nullable: false),
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, nullable: false, synthHint: 'site_ref'),
+      OracleColumn(name: 'COMPANY', type: OracleType.varchar2, length: 20, synthHint: 'company_ref'),
+      OracleColumn(name: 'CURRENCY_CODE', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'ORDER_DATE', type: OracleType.date, nullable: false),
+      OracleColumn(name: 'WANTED_RECEIPT_DATE', type: OracleType.date),
+      OracleColumn(name: 'BUYER_CODE', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
+      OracleColumn(name: 'OWNER_USER', type: OracleType.varchar2, length: 30, synthHint: 'owner_user'),
+    ],
+  ));
+
+  source.tables.add(OracleTable(
+    name: 'PURCHASE_ORDER_LINE_TAB',
+    schemaId: ifs.id,
+    rowCountTarget: 160,
+    synthSeed: 4002,
+    columns: [
+      OracleColumn(name: 'LINE_ID', type: OracleType.integer, primaryKey: true, nullable: false),
+      OracleColumn(name: 'ORDER_NO', type: OracleType.varchar2, length: 12, nullable: false),
+      OracleColumn(name: 'LINE_NO', type: OracleType.varchar2, length: 4),
+      OracleColumn(name: 'RELEASE_NO', type: OracleType.varchar2, length: 4),
+      OracleColumn(name: 'PART_NO', type: OracleType.varchar2, length: 25, synthHint: 'part_no'),
+      OracleColumn(name: 'CONTRACT', type: OracleType.varchar2, length: 5, synthHint: 'site_ref'),
+      OracleColumn(name: 'BUY_QTY_DUE', type: OracleType.number, precision: 14, scale: 3),
+      OracleColumn(name: 'BUY_UNIT_PRICE', type: OracleType.number, precision: 14, scale: 2, synthHint: 'amount'),
+      OracleColumn(name: 'CURRENCY_CODE', type: OracleType.char, length: 3, synthHint: 'currency_ref'),
+      OracleColumn(name: 'WANTED_RECEIPT_DATE', type: OracleType.date),
+      OracleColumn(name: 'OBJSTATE', type: OracleType.varchar2, length: 20, synthHint: 'objstate'),
     ],
   ));
 }
 
 // ---------------------------------------------------------------------------
-// Oracle-native data-quality rules
+// IFS-flavoured data-quality rules
 // ---------------------------------------------------------------------------
 
 void _seedRules(OracleSource source) {
-  final departments = source.tables.firstWhere((t) => t.name == 'DEPARTMENTS');
-  final jobs = source.tables.firstWhere((t) => t.name == 'JOBS');
-  final employees = source.tables.firstWhere((t) => t.name == 'EMPLOYEES');
-  final customers = source.tables.firstWhere((t) => t.name == 'CUSTOMERS');
-  final orders = source.tables.firstWhere((t) => t.name == 'ORDERS');
+  final company = source.tables.firstWhere((t) => t.name == 'COMPANY_TAB');
+  final site = source.tables.firstWhere((t) => t.name == 'SITE_TAB');
+  final person = source.tables.firstWhere((t) => t.name == 'PERSON_INFO_TAB');
+  final customer = source.tables.firstWhere((t) => t.name == 'CUSTOMER_INFO_TAB');
+  final supplier = source.tables.firstWhere((t) => t.name == 'SUPPLIER_INFO_TAB');
+  final part = source.tables.firstWhere((t) => t.name == 'INVENTORY_PART_TAB');
+  final coHdr = source.tables.firstWhere((t) => t.name == 'CUSTOMER_ORDER_TAB');
+  final coLine = source.tables.firstWhere((t) => t.name == 'CUSTOMER_ORDER_LINE_TAB');
+  final poHdr = source.tables.firstWhere((t) => t.name == 'PURCHASE_ORDER_TAB');
+  final poLine = source.tables.firstWhere((t) => t.name == 'PURCHASE_ORDER_LINE_TAB');
 
   source.rules.addAll([
-    // HR.DEPARTMENTS
+    // COMPANY_TAB
     DQRule(
-      code: 'R-DEP-001',
-      tableId: departments.id,
+      code: 'R-CMP-001',
+      tableId: company.id,
       kind: DQKind.notNull,
-      columnName: 'DEPARTMENT_NAME',
+      columnName: 'NAME',
       severity: DQSeverity.error,
-      message: 'Department name must be set.',
+      message: 'Company name must be set.',
     ),
     DQRule(
-      code: 'R-DEP-002',
-      tableId: departments.id,
+      code: 'R-CMP-002',
+      tableId: company.id,
       kind: DQKind.inSet,
-      columnName: 'COUNTRY_CODE',
-      values: List<String>.from(isoCountryCodes),
+      columnName: 'CURRENCY_CODE',
+      values: List<String>.from(currencyCodes),
       severity: DQSeverity.warning,
-      message: 'Country code must be a known ISO code.',
+      message: 'Currency must be a known ISO 4217 code.',
     ),
 
-    // HR.JOBS
+    // SITE_TAB
     DQRule(
-      code: 'R-JOB-001',
-      tableId: jobs.id,
+      code: 'R-SIT-001',
+      tableId: site.id,
       kind: DQKind.notNull,
-      columnName: 'JOB_TITLE',
+      columnName: 'COMPANY',
       severity: DQSeverity.error,
-      message: 'Job title must be set.',
+      message: 'Site must belong to a company.',
     ),
     DQRule(
-      code: 'R-JOB-002',
-      tableId: jobs.id,
-      kind: DQKind.positive,
-      columnName: 'MIN_SALARY',
+      code: 'R-SIT-002',
+      tableId: site.id,
+      kind: DQKind.foreignKey,
+      columnName: 'COMPANY',
+      refTableName: 'COMPANY_TAB',
+      refColumnName: 'COMPANY',
       severity: DQSeverity.error,
-      message: 'Minimum salary must be > 0.',
+      message: 'Company must exist in IFSAPP.COMPANY_TAB.',
     ),
 
-    // HR.EMPLOYEES
+    // PERSON_INFO_TAB
     DQRule(
-      code: 'R-EMP-001',
-      tableId: employees.id,
-      kind: DQKind.notNull,
-      columnName: 'FIRST_NAME',
-      severity: DQSeverity.error,
-      message: 'First name must be set.',
-    ),
-    DQRule(
-      code: 'R-EMP-002',
-      tableId: employees.id,
-      kind: DQKind.notNull,
-      columnName: 'LAST_NAME',
-      severity: DQSeverity.error,
-      message: 'Last name must be set.',
-    ),
-    DQRule(
-      code: 'R-EMP-003',
-      tableId: employees.id,
+      code: 'R-PER-001',
+      tableId: person.id,
       kind: DQKind.regex,
       columnName: 'EMAIL',
       pattern: emailPattern,
@@ -199,28 +310,19 @@ void _seedRules(OracleSource source) {
       message: 'Email must look like name@host.tld.',
     ),
     DQRule(
-      code: 'R-EMP-004',
-      tableId: employees.id,
-      kind: DQKind.positive,
-      columnName: 'SALARY',
-      severity: DQSeverity.error,
-      message: 'Salary must be strictly positive.',
-    ),
-    DQRule(
-      code: 'R-EMP-005',
-      tableId: employees.id,
-      kind: DQKind.foreignKey,
-      columnName: 'DEPARTMENT_ID',
-      refTableName: 'DEPARTMENTS',
-      refColumnName: 'DEPARTMENT_ID',
-      severity: DQSeverity.error,
-      message: 'Department must exist in HR.DEPARTMENTS.',
+      code: 'R-PER-002',
+      tableId: person.id,
+      kind: DQKind.inSet,
+      columnName: 'COUNTRY',
+      values: List<String>.from(isoCountryCodes),
+      severity: DQSeverity.warning,
+      message: 'Country must be a known ISO code.',
     ),
 
-    // SALES.CUSTOMERS
+    // CUSTOMER_INFO_TAB
     DQRule(
       code: 'R-CUS-001',
-      tableId: customers.id,
+      tableId: customer.id,
       kind: DQKind.notNull,
       columnName: 'NAME',
       severity: DQSeverity.error,
@@ -228,59 +330,126 @@ void _seedRules(OracleSource source) {
     ),
     DQRule(
       code: 'R-CUS-002',
-      tableId: customers.id,
+      tableId: customer.id,
       kind: DQKind.inSet,
-      columnName: 'COUNTRY_CODE',
-      values: List<String>.from(isoCountryCodes),
-      severity: DQSeverity.warning,
-      message: 'Country code must be a known ISO code.',
-    ),
-    DQRule(
-      code: 'R-CUS-003',
-      tableId: customers.id,
-      kind: DQKind.inSet,
-      columnName: 'STATUS',
-      values: List<String>.from(statusCodes),
-      severity: DQSeverity.warning,
-      message: 'Status must be one of ACTIVE/INACTIVE/PENDING/CLOSED.',
-    ),
-
-    // SALES.ORDERS
-    DQRule(
-      code: 'R-ORD-001',
-      tableId: orders.id,
-      kind: DQKind.foreignKey,
-      columnName: 'CUSTOMER_ID',
-      refTableName: 'CUSTOMERS',
-      refColumnName: 'CUSTOMER_ID',
-      severity: DQSeverity.error,
-      message: 'Customer must exist in SALES.CUSTOMERS.',
-    ),
-    DQRule(
-      code: 'R-ORD-002',
-      tableId: orders.id,
-      kind: DQKind.positive,
-      columnName: 'AMOUNT',
-      severity: DQSeverity.error,
-      message: 'Order amount must be strictly positive.',
-    ),
-    DQRule(
-      code: 'R-ORD-003',
-      tableId: orders.id,
-      kind: DQKind.inSet,
-      columnName: 'CURRENCY',
+      columnName: 'CURRENCY_CODE',
       values: List<String>.from(currencyCodes),
       severity: DQSeverity.warning,
       message: 'Currency must be a known ISO 4217 code.',
     ),
+
+    // SUPPLIER_INFO_TAB
     DQRule(
-      code: 'R-ORD-004',
-      tableId: orders.id,
-      kind: DQKind.inSet,
-      columnName: 'STATUS',
-      values: List<String>.from(statusCodes),
+      code: 'R-SUP-001',
+      tableId: supplier.id,
+      kind: DQKind.notNull,
+      columnName: 'NAME',
+      severity: DQSeverity.error,
+      message: 'Supplier name must be set.',
+    ),
+
+    // INVENTORY_PART_TAB
+    DQRule(
+      code: 'R-PRT-001',
+      tableId: part.id,
+      kind: DQKind.foreignKey,
+      columnName: 'CONTRACT',
+      refTableName: 'SITE_TAB',
+      refColumnName: 'SITE',
+      severity: DQSeverity.error,
+      message: 'Site (CONTRACT) must exist in IFSAPP.SITE_TAB.',
+    ),
+
+    // CUSTOMER_ORDER_TAB
+    DQRule(
+      code: 'R-COH-001',
+      tableId: coHdr.id,
+      kind: DQKind.foreignKey,
+      columnName: 'CUSTOMER_NO',
+      refTableName: 'CUSTOMER_INFO_TAB',
+      refColumnName: 'CUSTOMER_ID',
+      severity: DQSeverity.error,
+      message: 'Customer must exist in IFSAPP.CUSTOMER_INFO_TAB.',
+    ),
+    DQRule(
+      code: 'R-COH-002',
+      tableId: coHdr.id,
+      kind: DQKind.foreignKey,
+      columnName: 'CONTRACT',
+      refTableName: 'SITE_TAB',
+      refColumnName: 'SITE',
+      severity: DQSeverity.error,
+      message: 'Site (CONTRACT) must exist in IFSAPP.SITE_TAB.',
+    ),
+    DQRule(
+      code: 'R-COH-003',
+      tableId: coHdr.id,
+      kind: DQKind.datesOrdered,
+      columnName: 'ORDER_DATE',
+      secondColumn: 'WANTED_DELIVERY_DATE',
       severity: DQSeverity.warning,
-      message: 'Status must be one of ACTIVE/INACTIVE/PENDING/CLOSED.',
+      message: 'Order date must be on or before the wanted delivery date.',
+    ),
+
+    // CUSTOMER_ORDER_LINE_TAB
+    DQRule(
+      code: 'R-COL-001',
+      tableId: coLine.id,
+      kind: DQKind.foreignKey,
+      columnName: 'ORDER_NO',
+      refTableName: 'CUSTOMER_ORDER_TAB',
+      refColumnName: 'ORDER_NO',
+      severity: DQSeverity.error,
+      message: 'Line must reference an existing customer order.',
+    ),
+    DQRule(
+      code: 'R-COL-002',
+      tableId: coLine.id,
+      kind: DQKind.positive,
+      columnName: 'SALE_UNIT_PRICE',
+      severity: DQSeverity.warning,
+      message: 'Sale unit price should be strictly positive.',
+    ),
+
+    // PURCHASE_ORDER_TAB
+    DQRule(
+      code: 'R-POH-001',
+      tableId: poHdr.id,
+      kind: DQKind.foreignKey,
+      columnName: 'SUPPLIER_NO',
+      refTableName: 'SUPPLIER_INFO_TAB',
+      refColumnName: 'SUPPLIER_ID',
+      severity: DQSeverity.error,
+      message: 'Supplier must exist in IFSAPP.SUPPLIER_INFO_TAB.',
+    ),
+    DQRule(
+      code: 'R-POH-002',
+      tableId: poHdr.id,
+      kind: DQKind.datesOrdered,
+      columnName: 'ORDER_DATE',
+      secondColumn: 'WANTED_RECEIPT_DATE',
+      severity: DQSeverity.warning,
+      message: 'Order date must be on or before the wanted receipt date.',
+    ),
+
+    // PURCHASE_ORDER_LINE_TAB
+    DQRule(
+      code: 'R-POL-001',
+      tableId: poLine.id,
+      kind: DQKind.foreignKey,
+      columnName: 'ORDER_NO',
+      refTableName: 'PURCHASE_ORDER_TAB',
+      refColumnName: 'ORDER_NO',
+      severity: DQSeverity.error,
+      message: 'Line must reference an existing purchase order.',
+    ),
+    DQRule(
+      code: 'R-POL-002',
+      tableId: poLine.id,
+      kind: DQKind.positive,
+      columnName: 'BUY_UNIT_PRICE',
+      severity: DQSeverity.warning,
+      message: 'Buy unit price should be strictly positive.',
     ),
   ]);
 }

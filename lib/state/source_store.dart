@@ -39,12 +39,20 @@ class SourceStore extends ChangeNotifier {
     String? host,
     int? port,
     String? serviceName,
+    String? ownerUser,
+    String? companyCode,
+    String? defaultSite,
+    String? defaultCurrency,
   }) {
     final s = source;
     if (name != null) s.name = name;
     if (host != null) s.host = host;
     if (port != null) s.port = port;
     if (serviceName != null) s.serviceName = serviceName;
+    if (ownerUser != null) s.ownerUser = ownerUser;
+    if (companyCode != null) s.companyCode = companyCode;
+    if (defaultSite != null) s.defaultSite = defaultSite;
+    if (defaultCurrency != null) s.defaultCurrency = defaultCurrency;
     notifyListeners();
     _persist();
   }
@@ -174,9 +182,21 @@ class SourceStore extends ChangeNotifier {
   void regenerateRows(String tableId) {
     final t = tableById(tableId);
     if (t == null) return;
-    synthesizeRows(t);
+    synthesizeRows(t, anchors: SynthAnchors.fromSource(source));
     notifyListeners();
     _persist();
+  }
+
+  /// Re-synthesize every table in the source using the current identity
+  /// anchors. Use this after editing owner / company / site / currency on
+  /// the source settings so generated data picks up the new values.
+  Future<void> regenerateAll() async {
+    final anchors = SynthAnchors.fromSource(source);
+    for (final t in source.tables) {
+      synthesizeRows(t, anchors: anchors);
+    }
+    notifyListeners();
+    await _persist();
   }
 
   void addEmptyRow(String tableId) {

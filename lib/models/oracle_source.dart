@@ -151,10 +151,14 @@ class OracleSchema {
 
 class OracleSource {
   OracleSource({
-    this.name = 'ORACLE_DEV',
+    this.name = 'IFS_DEV',
     this.host = 'localhost',
     this.port = 1521,
-    this.serviceName = 'ORCLPDB1',
+    this.serviceName = 'IFSPRD',
+    this.ownerUser = 'IFSAPP',
+    this.companyCode = '10',
+    this.defaultSite = 'S001',
+    this.defaultCurrency = 'USD',
     List<OracleSchema>? schemas,
     List<OracleTable>? tables,
     List<DQRule>? rules,
@@ -166,6 +170,14 @@ class OracleSource {
   String host;
   int port;
   String serviceName;
+
+  /// IFS-style identity anchors used by the synthesizer so that generated
+  /// rows feel like a single tenanted source rather than random data.
+  String ownerUser;
+  String companyCode;
+  String defaultSite;
+  String defaultCurrency;
+
   List<OracleSchema> schemas;
   List<OracleTable> tables;
   List<DQRule> rules;
@@ -189,16 +201,24 @@ class OracleSource {
         'host': host,
         'port': port,
         'serviceName': serviceName,
+        'ownerUser': ownerUser,
+        'companyCode': companyCode,
+        'defaultSite': defaultSite,
+        'defaultCurrency': defaultCurrency,
         'schemas': schemas.map((s) => s.toJson()).toList(),
         'tables': tables.map((t) => t.toJson()).toList(),
         'rules': rules.map((r) => r.toJson()).toList(),
       };
 
   factory OracleSource.fromJson(Map<String, dynamic> j) => OracleSource(
-        name: j['name'] as String? ?? 'ORACLE_DEV',
+        name: j['name'] as String? ?? 'IFS_DEV',
         host: j['host'] as String? ?? 'localhost',
         port: j['port'] as int? ?? 1521,
-        serviceName: j['serviceName'] as String? ?? 'ORCLPDB1',
+        serviceName: j['serviceName'] as String? ?? 'IFSPRD',
+        ownerUser: j['ownerUser'] as String? ?? 'IFSAPP',
+        companyCode: j['companyCode'] as String? ?? '10',
+        defaultSite: j['defaultSite'] as String? ?? 'S001',
+        defaultCurrency: j['defaultCurrency'] as String? ?? 'USD',
         schemas: (j['schemas'] as List<dynamic>? ?? [])
             .map((s) => OracleSchema.fromJson(s as Map<String, dynamic>))
             .toList(),
