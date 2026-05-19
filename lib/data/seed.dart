@@ -15,6 +15,8 @@ OracleSource buildDefaultSource() {
     port: 1521,
     serviceName: 'IFSPRD',
     ownerUser: 'IFSAPP',
+    username: 'IFSAPP',
+    password: 'ifs_dev_password',
     companyCode: '10',
     defaultSite: 'S001',
     defaultCurrency: 'USD',

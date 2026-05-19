@@ -39,6 +39,8 @@ class SourceStore extends ChangeNotifier {
     String? host,
     int? port,
     String? serviceName,
+    String? username,
+    String? password,
     String? ownerUser,
     String? companyCode,
     String? defaultSite,
@@ -49,6 +51,8 @@ class SourceStore extends ChangeNotifier {
     if (host != null) s.host = host;
     if (port != null) s.port = port;
     if (serviceName != null) s.serviceName = serviceName;
+    if (username != null) s.username = username;
+    if (password != null) s.password = password;
     if (ownerUser != null) s.ownerUser = ownerUser;
     if (companyCode != null) s.companyCode = companyCode;
     if (defaultSite != null) s.defaultSite = defaultSite;

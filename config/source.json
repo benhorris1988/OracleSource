@@ -1,0 +1,12 @@
+{
+  "name": "IFS_DEV",
+  "host": "localhost",
+  "port": 1521,
+  "serviceName": "IFSPRD",
+  "username": "IFSAPP",
+  "password": "ifs_dev_password",
+  "ownerUser": "IFSAPP",
+  "companyCode": "10",
+  "defaultSite": "S001",
+  "defaultCurrency": "USD"
+}

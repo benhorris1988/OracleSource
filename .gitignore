@@ -21,3 +21,6 @@ windows/
 
 # Generated locks (optional to commit)
 pubspec.lock
+
+# Local Docker credentials — .env.example is the committed template.
+docker/.env

@@ -156,6 +156,8 @@ class OracleSource {
     this.port = 1521,
     this.serviceName = 'IFSPRD',
     this.ownerUser = 'IFSAPP',
+    this.username = 'IFSAPP',
+    this.password = 'ifs_dev_password',
     this.companyCode = '10',
     this.defaultSite = 'S001',
     this.defaultCurrency = 'USD',
@@ -177,6 +179,14 @@ class OracleSource {
   String companyCode;
   String defaultSite;
   String defaultCurrency;
+
+  /// Connection credentials surfaced in the exported DDL (`CREATE USER ...
+  /// IDENTIFIED BY ...`) and the Docker compose setup. Defaults match
+  /// `config/source.json` so a fresh `docker compose up` works out of the
+  /// box. **Not** intended for production passwords — change before
+  /// running against anything that matters.
+  String username;
+  String password;
 
   List<OracleSchema> schemas;
   List<OracleTable> tables;
@@ -201,6 +211,8 @@ class OracleSource {
         'host': host,
         'port': port,
         'serviceName': serviceName,
+        'username': username,
+        'password': password,
         'ownerUser': ownerUser,
         'companyCode': companyCode,
         'defaultSite': defaultSite,
@@ -215,6 +227,8 @@ class OracleSource {
         host: j['host'] as String? ?? 'localhost',
         port: j['port'] as int? ?? 1521,
         serviceName: j['serviceName'] as String? ?? 'IFSPRD',
+        username: j['username'] as String? ?? 'IFSAPP',
+        password: j['password'] as String? ?? 'ifs_dev_password',
         ownerUser: j['ownerUser'] as String? ?? 'IFSAPP',
         companyCode: j['companyCode'] as String? ?? '10',
         defaultSite: j['defaultSite'] as String? ?? 'S001',

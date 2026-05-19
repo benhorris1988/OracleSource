@@ -47,10 +47,17 @@ String exportSourceSql(OracleSource source) {
   final buf = StringBuffer()
     ..writeln('-- Source: ${source.name}')
     ..writeln('-- ${source.host}:${source.port}/${source.serviceName}')
+    ..writeln('-- Login: ${source.username}')
     ..writeln();
+
+  // Create one Oracle user per schema. In an IFS-style single-owner deploy
+  // there's typically only one schema (IFSAPP) and `source.password` is its
+  // login password; any additional schemas get the same password for dev
+  // convenience.
   for (final schema in source.schemas) {
-    buf.writeln('CREATE USER ${schema.name} IDENTIFIED BY "changeme";');
-    buf.writeln('GRANT CONNECT, RESOURCE TO ${schema.name};');
+    final pwd = _quoteIdentPassword(source.password);
+    buf.writeln('CREATE USER ${schema.name} IDENTIFIED BY $pwd;');
+    buf.writeln('GRANT CONNECT, RESOURCE, UNLIMITED TABLESPACE TO ${schema.name};');
     buf.writeln();
   }
   for (final table in source.tables) {
@@ -58,6 +65,14 @@ String exportSourceSql(OracleSource source) {
     buf.writeln();
   }
   return buf.toString();
+}
+
+/// Oracle accepts unquoted passwords for simple alphanumerics, otherwise
+/// they need double-quotes. We always quote for safety and escape embedded
+/// quotes by doubling.
+String _quoteIdentPassword(String pwd) {
+  final escaped = pwd.replaceAll('"', '""');
+  return '"$escaped"';
 }
 
 String _sqlLiteral(dynamic v, OracleColumn col) {

@@ -1,21 +1,24 @@
 # Oracle Source
 
-A cross-platform Flutter app (web, Android, iOS) for designing and synthesizing a **fake Oracle database**. Add schemas, tables and columns; tweak Oracle types and constraints; generate deterministic synthetic rows; and export DDL + `INSERT` statements ready to run against a real Oracle instance.
+A cross-platform Flutter app (web, Android, iOS) for designing and synthesizing a **fake IFS-on-Oracle database**, plus a `docker compose` setup that stands the whole thing up as a real Oracle service on `localhost:1521` so BI tools, ETL jobs and the [`ConnectorExpenses`](https://github.com/benhorris1988/ConnectorExpenses) operator console can connect and extract data.
 
-The data-synthesis approach (deterministic seeded random, entity + column + row generation) is borrowed from the [`ConnectorExpenses`](https://github.com/benhorris1988/ConnectorExpenses) operator console and re-implemented in Dart for portable, offline-first use.
+Add schemas, tables and columns; tweak Oracle types and constraints; generate deterministic synthetic rows; export DDL + `INSERT` statements; and run them inside a containerized Oracle Database Free 23c.
+
+The data-synthesis approach (deterministic seeded random, entity + column + row generation) is borrowed from `ConnectorExpenses` and re-implemented in Dart for portable, offline-first use.
 
 ## What you can do
 
-- Configure source metadata (host, port, service name).
-- Add / rename / delete schemas (`HR`, `SALES`, etc.).
+- Configure source metadata (host, port, service name) plus the IFS identity anchors (owner user, company, site, currency) and the Oracle login credentials consumers use to connect.
+- Add / rename / delete schemas (`IFSAPP`, etc.).
 - Add tables with Oracle types: `NUMBER`, `VARCHAR2`, `CHAR`, `CLOB`, `DATE`, `TIMESTAMP`, `RAW`, `BLOB`, plus a `BOOLEAN` shortcut for `NUMBER(1,0)`.
-- Edit columns: length / precision / scale, nullable, primary key, unique, default, and a **synth hint** that steers fake-data generation (`first_name`, `email`, `country`, `salary`, …).
-- Regenerate rows deterministically (same seed → same data).
+- Edit columns: length / precision / scale, nullable, primary key, unique, default, and a **synth hint** that steers fake-data generation (`owner_user`, `site_ref`, `objstate`, `part_no`, `email`, `country`, …).
+- Regenerate rows deterministically (same seed → same data); the anchor values flow into generated rows.
 - Edit individual cells, add or delete rows manually.
-- Copy generated SQL to clipboard (per table or whole source).
+- Copy generated SQL or `config/source.json` to clipboard.
+- Stand up a local Oracle service via Docker and have it auto-load the seed (see [`docker/README.md`](docker/README.md)).
 - State persists locally via `shared_preferences` on every platform.
 
-The first launch is seeded with classic Oracle-style content: `HR.EMPLOYEES`, `HR.DEPARTMENTS`, `HR.JOBS`, `SALES.CUSTOMERS`, `SALES.ORDERS`.
+The first launch is seeded with an IFS-style content set under `IFSAPP`: `COMPANY_TAB`, `SITE_TAB`, `PERSON_INFO_TAB`, `USER_ALLOWED_SITE_TAB`, `CUSTOMER_INFO_TAB`, `SUPPLIER_INFO_TAB`, `INVENTORY_PART_TAB`, `CUSTOMER_ORDER_TAB`, `CUSTOMER_ORDER_LINE_TAB`, `PURCHASE_ORDER_TAB`, `PURCHASE_ORDER_LINE_TAB`.
 
 ## Bootstrapping (one-time)
 
@@ -28,6 +31,51 @@ flutter pub get
 ```
 
 That will fill in `android/`, `ios/`, and refresh `web/` without overwriting the custom `index.html` / `manifest.json` in this repo.
+
+## Running the Oracle service
+
+The repo ships a `docker compose` setup that runs Oracle Database Free 23c on `localhost:1521`. Consumers connect to it; the Flutter app authors the schema + data that gets loaded.
+
+```bash
+cd docker
+cp .env.example .env            # adjust credentials if you like
+docker compose up -d            # first start: ~5 min while Oracle provisions
+docker compose logs -f oracle   # wait for "DATABASE IS READY TO USE!"
+```
+
+Default connection:
+
+| Setting       | Value                                              |
+|---------------|----------------------------------------------------|
+| Host          | `localhost`                                        |
+| Port          | `1521`                                             |
+| Service name  | `IFSPRD`                                           |
+| Username      | `IFSAPP`                                           |
+| Password      | `ifs_dev_password`                                 |
+| JDBC URL      | `jdbc:oracle:thin:IFSAPP/ifs_dev_password@//localhost:1521/IFSPRD` |
+
+To load IFS sample data: open the Flutter app → **Source settings → "Copy seed SQL (DDL + INSERTs)"** → paste into `docker/init/01_seed.sql` → `docker compose down -v && docker compose up -d`. Full walkthrough in [`docker/README.md`](docker/README.md).
+
+## Where credentials live
+
+[`config/source.json`](config/source.json) is the project's source of truth for connection metadata + IFS anchors. Both the Flutter app (as initial defaults) and the Docker compose setup (as `.env` defaults) read from this shape:
+
+```json
+{
+  "name": "IFS_DEV",
+  "host": "localhost",
+  "port": 1521,
+  "serviceName": "IFSPRD",
+  "username": "IFSAPP",
+  "password": "ifs_dev_password",
+  "ownerUser": "IFSAPP",
+  "companyCode": "10",
+  "defaultSite": "S001",
+  "defaultCurrency": "USD"
+}
+```
+
+Edit these in the Flutter app under **Source settings → Credentials / IFS identity**, then **"Copy config/source.json"** to grab the JSON for the project file. Update `docker/.env` to match if you change the password.
 
 ## Running
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,10 +18,14 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
   late final TextEditingController _host;
   late final TextEditingController _port;
   late final TextEditingController _service;
+  late final TextEditingController _user;
+  late final TextEditingController _pwd;
   late final TextEditingController _ownerUser;
   late final TextEditingController _company;
   late final TextEditingController _site;
   late final TextEditingController _currency;
+
+  bool _showPassword = false;
 
   @override
   void initState() {
@@ -28,6 +34,8 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     _host = TextEditingController();
     _port = TextEditingController();
     _service = TextEditingController();
+    _user = TextEditingController();
+    _pwd = TextEditingController();
     _ownerUser = TextEditingController();
     _company = TextEditingController();
     _site = TextEditingController();
@@ -45,6 +53,8 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     _host.text = s.host;
     _port.text = s.port.toString();
     _service.text = s.serviceName;
+    _user.text = s.username;
+    _pwd.text = s.password;
     _ownerUser.text = s.ownerUser;
     _company.text = s.companyCode;
     _site.text = s.defaultSite;
@@ -58,6 +68,8 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     _host.dispose();
     _port.dispose();
     _service.dispose();
+    _user.dispose();
+    _pwd.dispose();
     _ownerUser.dispose();
     _company.dispose();
     _site.dispose();
@@ -75,6 +87,7 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // -- Connection -----------------------------------------------------
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -83,6 +96,13 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
                 children: [
                   Text('Connection',
                       style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'These are the values external consumers (BI tools, '
+                    'ETL jobs, Connector services) use to reach the Oracle '
+                    'container.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _name,
@@ -129,6 +149,66 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // -- Credentials ----------------------------------------------------
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Credentials',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Used in the exported CREATE USER DDL and by the Docker '
+                    'container at startup. Anything connecting to extract '
+                    'data uses this username / password.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _user,
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      helperText: 'Oracle login (typically the schema owner)',
+                    ),
+                    onChanged: (v) =>
+                        store.updateSourceMeta(username: v.toUpperCase()),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _pwd,
+                    obscureText: !_showPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      helperText:
+                          'Stored in shared_preferences + exported to config/source.json',
+                      suffixIcon: IconButton(
+                        icon: Icon(_showPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setState(() => _showPassword = !_showPassword),
+                        tooltip: _showPassword ? 'Hide' : 'Show',
+                      ),
+                    ),
+                    onChanged: (v) => store.updateSourceMeta(password: v),
+                  ),
+                  const SizedBox(height: 8),
+                  Builder(builder: (context) {
+                    final src = store.source;
+                    final jdbc =
+                        'jdbc:oracle:thin:${src.username}/${src.password}@//${src.host}:${src.port}/${src.serviceName}';
+                    return _ConnectionStringBlock(jdbc: jdbc);
+                  }),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // -- Identity anchors -----------------------------------------------
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -213,14 +293,33 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // -- Export + reset -------------------------------------------------
           Card(
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.download_outlined),
-                  title: const Text('Export full SQL script'),
+                  leading: const Icon(Icons.code),
+                  title: const Text('Copy config/source.json'),
                   subtitle: const Text(
-                      'CREATE USER, CREATE TABLE, INSERT statements'),
+                      'Paste into the project file so Docker + consumers pick up your changes'),
+                  onTap: () {
+                    final json = const JsonEncoder.withIndent('  ')
+                        .convert(_sourceConfigJson(store.source));
+                    Clipboard.setData(ClipboardData(text: json));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'config/source.json copied to clipboard')),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.download_outlined),
+                  title: const Text('Copy seed SQL (DDL + INSERTs)'),
+                  subtitle: const Text(
+                      'Paste into docker/init/01_seed.sql so Oracle loads it on startup'),
                   onTap: () {
                     final sql = exportSourceSql(store.source);
                     Clipboard.setData(ClipboardData(text: sql));
@@ -256,6 +355,62 @@ class _SourceSettingsPageState extends State<SourceSettingsPage> {
     );
   }
 }
+
+/// Inline read-only JDBC string display with a copy button. Keeps the
+/// `jdbc:oracle:thin:` form so consumers can paste it straight into their
+/// connection settings.
+class _ConnectionStringBlock extends StatelessWidget {
+  const _ConnectionStringBlock({required this.jdbc});
+  final String jdbc;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              jdbc,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy, size: 18),
+            tooltip: 'Copy JDBC URL',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jdbc));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('JDBC URL copied')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Just the connection metadata + identity anchors + credentials, formatted
+/// to match the checked-in `config/source.json`. The (much larger) schema /
+/// table / row / rule definitions stay in shared_preferences only.
+Map<String, dynamic> _sourceConfigJson(source) => {
+      'name': source.name,
+      'host': source.host,
+      'port': source.port,
+      'serviceName': source.serviceName,
+      'username': source.username,
+      'password': source.password,
+      'ownerUser': source.ownerUser,
+      'companyCode': source.companyCode,
+      'defaultSite': source.defaultSite,
+      'defaultCurrency': source.defaultCurrency,
+    };
 
 Future<bool> _confirm(
   BuildContext context, {
