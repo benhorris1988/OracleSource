@@ -1,0 +1,43 @@
+# Oracle Database Free 23c running locally, listening on 1521.
+#
+# Consumers (BI tools, ETL jobs, ConnectorExpenses, …) connect to:
+#   jdbc:oracle:thin:IFSAPP/<password>@//localhost:1521/IFSPRD
+#
+# The user / password / pluggable-database name come from .env, which the
+# Flutter app keeps in sync with config/source.json. Edit one and mirror to
+# the other (or copy via Source settings → "Copy config/source.json").
+#
+# First start: ~5 minutes while Oracle initializes the new PDB. Subsequent
+# starts: ~30 seconds. Volume `oracle_data` persists the database between
+# `docker compose down` cycles; remove it to wipe state.
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: oracle_source
+    restart: unless-stopped
+    ports:
+      - "1521:1521"
+    environment:
+      # SYS / SYSTEM admin password (only used for first-time provisioning).
+      ORACLE_PASSWORD: ${ORACLE_SYS_PASSWORD:-oracle_admin_password}
+      # Creates an additional pluggable database (IFS-themed name).
+      ORACLE_DATABASE: ${ORACLE_PDB:-IFSPRD}
+      # Application user + password that consumers actually use.
+      APP_USER: ${APP_USER:-IFSAPP}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:-ifs_dev_password}
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+      # Init scripts in this directory run once, on first container start,
+      # against the application PDB ($ORACLE_DATABASE) as the APP_USER.
+      # Drop the app's exported seed SQL into 01_seed.sql.
+      - ./init:/container-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+volumes:
+  oracle_data:
